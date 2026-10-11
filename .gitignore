@@ -1,0 +1,10 @@
+.env
+.env.*
+!.env.example
+db/
+*.log
+.rodeo_bot.pid
+__pycache__/
+*.py[cod]
+.venv/
+venv/

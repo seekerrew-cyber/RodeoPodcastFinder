@@ -1,0 +1,7 @@
+yt-dlp
+youtube-transcript-api>=1.0
+sentence-transformers
+chromadb
+streamlit
+# ใช้เฉพาะเมื่อต้องถอดเสียงเอง (--whisper)
+faster-whisper
