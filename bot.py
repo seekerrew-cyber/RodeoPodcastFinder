@@ -1,12 +1,12 @@
 """
-Discord bot สำหรับ Story Finder
+Discord bot for Story Finder
 
-ตั้งค่า (environment variables):
-    DISCORD_TOKEN   token ของบอท (จำเป็น)
-    OWNER_ID        Discord user id ของคุณ ใช้จำกัดสิทธิ์คำสั่ง /reindex (ไม่บังคับ)
-    MIN_SCORE       คะแนนขั้นต่ำที่ถือว่า "น่าจะตรง" (ค่าเริ่มต้น 0.35 ต้องลองปรับตามช่องจริง)
+Configuration (environment variables):
+    DISCORD_TOKEN   Discord bot token (required)
+    OWNER_ID        Your Discord user ID; restricts /reindex access (optional)
+    MIN_SCORE       Minimum match score (default 0.35; tune for your channel)
 
-รัน:
+Run:
     python bot.py
 """
 import asyncio
@@ -57,7 +57,7 @@ if not TOKEN:
 OWNER_ID = _safe_int_env("OWNER_ID", 0)
 MIN_SCORE = _safe_float_env("MIN_SCORE", 0.35)
 
-# จำกัดจำนวนงาน embedding พร้อมกัน กันเครื่องค้างเวลามีคนใช้หลายคน
+# Limit concurrent embedding jobs to prevent overload when multiple users search.
 search_slots = asyncio.Semaphore(2)
 
 
@@ -67,7 +67,7 @@ class Bot(discord.Client):
         self.tree = app_commands.CommandTree(self)
 
     async def setup_hook(self):
-        # โหลดโมเดลล่วงหน้า คำสั่งแรกจะได้ไม่ช้า
+        # Load the model in advance so the first command is faster.
         await asyncio.to_thread(finder.get_model)
         await self.tree.sync()
 
@@ -79,14 +79,14 @@ def fmt_time(sec: int) -> str:
     return f"{sec // 60}:{sec % 60:02d}"
 
 
-@client.tree.command(name="find", description="ใส่เรื่องย่อ แล้วหาคลิปที่เนื้อเรื่องตรงกัน")
-@app_commands.describe(summary="เรื่องย่อที่จำได้ ยิ่งละเอียดยิ่งแม่น", top="จำนวนผลลัพธ์ (1-5)")
+@client.tree.command(name="find", description="Find matching clips from a story summary")
+@app_commands.describe(summary="A remembered story summary; more detail improves matches", top="Number of results (1-10)")
 async def find(
     interaction: discord.Interaction,
     summary: app_commands.Range[str, 10, 2000],
-    top: app_commands.Range[int, 1, 5] = 3,
+    top: app_commands.Range[int, 1, 10] = 5,
 ):
-    status_message = f"กำลังค้นหาคลิปที่ตรงกับ : {summary}"
+    status_message = f"Searching for clips matching: {summary}"
     await interaction.response.send_message(status_message)
 
     async with search_slots:
@@ -96,22 +96,22 @@ async def find(
         await interaction.edit_original_response(
             content=(
                 f"{status_message}\n\n"
-                "ไม่เจอเรื่องที่ตรงพอ ลองเล่าเพิ่ม เช่น ตัวละคร สถานที่ หรือเหตุการณ์สำคัญ"
+                "No close match found. Try adding details such as characters, locations, or key events."
             )
         )
         return
 
-    embed = discord.Embed(title="เรื่องที่น่าจะตรง", color=discord.Color.dark_purple())
+    embed = discord.Embed(title="Likely matches", color=discord.Color.dark_purple())
     embed.set_thumbnail(url=f"https://img.youtube.com/vi/{results[0]['video_id']}/hqdefault.jpg")
-    embed.set_footer(text=f"ค้นหาจาก: {summary[:80]}{'…' if len(summary) > 80 else ''}")
+    embed.set_footer(text=f"Search query: {summary[:80]}{'…' if len(summary) > 80 else ''}")
 
     for i, r in enumerate(results, 1):
         snippet = r["snippet"][:160].replace("\n", " ")
         embed.add_field(
             name=f"{i}. {r['title']}"[:256],
             value=(
-                f"ความคล้าย **{r['score']:.0%}** · "
-                f"[ดูท่อนที่ตรง ({fmt_time(r['start'])})]({r['url']})\n> {snippet}…"
+                f"Similarity **{r['score']:.0%}** · "
+                f"[Watch matching moment ({fmt_time(r['start'])})]({r['url']})\n> {snippet}…"
             )[:1024],
             inline=False,
         )
@@ -119,17 +119,17 @@ async def find(
     await interaction.edit_original_response(content=status_message, embed=embed)
 
 
-@client.tree.command(name="reindex", description="(เจ้าของบอท) อัปเดต index จากช่อง")
-@app_commands.describe(channel_url="URL ช่อง YouTube", limit="จำนวนคลิปล่าสุดที่จะตรวจ")
+@client.tree.command(name="reindex", description="(Bot owner) Update the index from a channel")
+@app_commands.describe(channel_url="YouTube channel URL", limit="Number of recent videos to check")
 async def reindex(interaction: discord.Interaction, channel_url: str, limit: int = 20):
     if interaction.user.id != OWNER_ID:
-        await interaction.response.send_message("คำสั่งนี้สำหรับเจ้าของบอทเท่านั้น", ephemeral=True)
+        await interaction.response.send_message("This command is for the bot owner only.", ephemeral=True)
         return
     await interaction.response.defer(thinking=True, ephemeral=True)
     added = await asyncio.to_thread(
         finder.index_channel, channel_url, False, limit, lambda m: print(m)
     )
-    await interaction.followup.send(f"เสร็จแล้ว เพิ่มใหม่ {added} คลิป")
+    await interaction.followup.send(f"Done. Added {added} new video(s).")
 
 
 try:
