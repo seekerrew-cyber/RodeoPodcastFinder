@@ -55,8 +55,8 @@ Use it three ways: a **command line**, a **web UI**, or a **Discord bot**.
 Requires Python 3.10 or newer.
 
 ```bash
-git clone https://github.com/your-username/Rodeo .git
-cd Rodeo 
+git clone https://github.com/seekerrew-cyber/rodeo-podcast-finder
+cd rodeo-podcast-finder 
 python -m venv .venv
 source .venv/bin/activate        # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
